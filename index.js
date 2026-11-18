@@ -1,11 +1,11 @@
-import express from 'express';
+import app from './src/app.js';
+import { connectToMongoDB } from './src/config/database.js';
 
-const app = express();
 const port = 8000;
 
-app.get('/', (req, res) => {
-    res.send('Hello World!');
-});
+export { connectToMongoDB };
+
+await connectToMongoDB();
 
 app.listen(port, () => {
     console.log(`Server running at ${port}`);

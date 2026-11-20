@@ -3,6 +3,7 @@ import { MongoClient } from 'mongodb';
 
 const client = new MongoClient(process.env.MONGODB_URI);
 
+//connect mongodb
 export async function connectToMongoDB() {
     try {
         await client.connect();
@@ -13,6 +14,7 @@ export async function connectToMongoDB() {
     }
 }
 
+//database create
 export const db = client.db('salon_booking_db');
 export const userCollection = db.collection('user');
 export const serviceCollection = db.collection('services');

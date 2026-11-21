@@ -32,10 +32,17 @@ router.get('/api/services', async (req, res) => {
 
 //single service api
 router.get('/api/services/:id', async (req, res) => {
-    const id = req.params.id;
-    const query = { _id: new ObjectId(id) };
-    const result = await serviceCollection.findOne(query);
-    res.send(result);
+    try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await serviceCollection.findOne(query);
+        res.send(result);
+    } catch (err) {
+        console.log('Service finding error:', err);
+        res.status(500).send({
+            message: 'Failed to find service',
+        });
+    }
 });
 
 //service update api create
@@ -43,15 +50,11 @@ router.patch('/api/services/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const update = req.body;
-
         const filter = { _id: new ObjectId(id) };
-
         const updateDocs = {
             $set: update,
         };
-
         const result = await serviceCollection.updateOne(filter, updateDocs);
-
         res.send(result);
     } catch (error) {
         console.log('Service update error:', error);
@@ -62,4 +65,19 @@ router.patch('/api/services/:id', async (req, res) => {
     }
 });
 
+//service delete api create
+router.delete('/api/services/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const filter = { _id: new ObjectId(id) };
+        const result = await serviceCollection.deleteOne(filter);
+        res.send(result);
+    } catch (error) {
+        console.log('Service delete error:', error);
+
+        res.status(500).send({
+            message: 'Failed to delete service',
+        });
+    }
+});
 export default router;

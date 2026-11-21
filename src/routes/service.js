@@ -38,4 +38,28 @@ router.get('/api/services/:id', async (req, res) => {
     res.send(result);
 });
 
+//service update api create
+router.patch('/api/services/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const update = req.body;
+
+        const filter = { _id: new ObjectId(id) };
+
+        const updateDocs = {
+            $set: update,
+        };
+
+        const result = await serviceCollection.updateOne(filter, updateDocs);
+
+        res.send(result);
+    } catch (error) {
+        console.log('Service update error:', error);
+
+        res.status(500).send({
+            message: 'Failed to update service',
+        });
+    }
+});
+
 export default router;

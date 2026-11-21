@@ -18,3 +18,4 @@ export async function connectToMongoDB() {
 export const db = client.db('salon_booking_db');
 export const userCollection = db.collection('user');
 export const serviceCollection = db.collection('services');
+export const serviceBookingcollection = db.collection('service-booking');

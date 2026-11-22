@@ -36,10 +36,16 @@ router.get('/api/services', async (req, res) => {
 router.get('/api/services/:id', verifyToken, async (req, res) => {
     try {
         if (!ObjectId.isValid(req.params.id))
-            return res.status(404).send({ message: 'Service not found' });
-        const query = { _id: new ObjectId(req.params.id) };
+            return res.status(404).send({
+                message: 'Service not found',
+            });
+        const query = {
+            _id: new ObjectId(req.params.id),
+        };
         if (req.user.role !== 'admin') query.status = 'active';
+
         const service = await serviceCollection.findOne(query);
+
         if (!service) return res.status(404).send({ message: 'Service not found' });
         res.send(service);
     } catch {
@@ -51,6 +57,7 @@ router.get('/api/services/:id', verifyToken, async (req, res) => {
 router.post('/api/services', verifyToken, requireAdmin, async (req, res) => {
     try {
         const { data, error } = serviceData(req.body, true);
+
         if (error) return res.status(400).send({ message: error });
         res.status(201).send(await serviceCollection.insertOne(data));
     } catch {
@@ -64,12 +71,19 @@ router.patch('/api/services/:id', verifyToken, requireAdmin, async (req, res) =>
         if (!ObjectId.isValid(req.params.id))
             return res.status(400).send({ message: 'Invalid service ID' });
         const { data, error } = serviceData(req.body);
-        if (error) return res.status(400).send({ message: error });
+
+        if (error)
+            return res.status(400).send({
+                message: error,
+            });
         const result = await serviceCollection.updateOne(
             { _id: new ObjectId(req.params.id) },
             { $set: { ...data, updatedAt: new Date() } },
         );
-        if (!result.matchedCount) return res.status(404).send({ message: 'Service not found' });
+        if (!result.matchedCount)
+            return res.status(404).send({
+                message: 'Service not found',
+            });
         res.send(result);
     } catch {
         res.status(500).send({ message: 'Failed to update service' });
@@ -79,12 +93,19 @@ router.patch('/api/services/:id', verifyToken, requireAdmin, async (req, res) =>
 router.delete('/api/services/:id', verifyToken, requireAdmin, async (req, res) => {
     try {
         if (!ObjectId.isValid(req.params.id))
-            return res.status(400).send({ message: 'Invalid service ID' });
-        const result = await serviceCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+            return res.status(400).send({
+                message: 'Invalid service ID',
+            });
+
+        const result = await serviceCollection.deleteOne({
+            _id: new ObjectId(req.params.id),
+        });
         if (!result.deletedCount) return res.status(404).send({ message: 'Service not found' });
         res.send(result);
     } catch {
-        res.status(500).send({ message: 'Failed to delete service' });
+        res.status(500).send({
+            message: 'Failed to delete service',
+        });
     }
 });
 

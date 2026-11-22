@@ -187,6 +187,7 @@ router.post('/api/customer/appointments/:id/checkout', async (req, res) => {
         if (booking.checkoutSessionId) {
             const previous = await stripe.checkout.sessions.retrieve(booking.checkoutSessionId);
             if (previous.status === 'open') return res.send({ url: previous.url });
+
             // A verified failed asynchronous payment may be retried with a new checkout.
             const failed = await transactionCollection.findOne({
                 stripeSessionId: previous.id,
@@ -202,6 +203,7 @@ router.post('/api/customer/appointments/:id/checkout', async (req, res) => {
         const details = await getDetails(booking);
         if (!Number.isFinite(details.service.price) || details.service.price <= 0)
             return res.status(400).send({ message: 'Service price is unavailable' });
+
         const clientUrl = process.env.CLIENT_URL.replace(/\/$/, '');
         const session = await stripe.checkout.sessions.create(
             {

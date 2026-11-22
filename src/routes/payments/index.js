@@ -11,17 +11,23 @@ router.get('/api/checkout-session/:sessionId', verifyToken, requireCustomer, asy
     try {
         if (!/^cs_[a-zA-Z0-9_]+$/.test(req.params.sessionId))
             return res.status(400).send({ message: 'Invalid checkout session' });
+
         const session = await stripe.checkout.sessions.retrieve(req.params.sessionId, {
             expand: ['line_items'],
         });
         const bookingId = session.metadata?.bookingId;
         if (session.metadata?.userId !== req.user.id || !ObjectId.isValid(bookingId || ''))
             return res.status(404).send({ message: 'Checkout not found' });
+
         const booking = await serviceBookingcollection.findOne({
             _id: new ObjectId(bookingId),
             userId: req.user.id,
         });
-        if (!booking) return res.status(404).send({ message: 'Appointment not found' });
+
+        if (!booking)
+            return res.status(404).send({
+                message: 'Appointment not found',
+            });
         res.send({
             id: session.id,
             bookingId,

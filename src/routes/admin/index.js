@@ -73,14 +73,27 @@ router.get('/api/admin/appointments', async (req, res) => {
 router.patch('/api/admin/appointments/:id/:action', async (req, res) => {
     try {
         const { id, action } = req.params;
+
         if (!ObjectId.isValid(id) || !['confirm', 'cancel'].includes(action))
             return res.status(400).send({ message: 'Invalid appointment action' });
-        const booking = await serviceBookingcollection.findOne({ _id: new ObjectId(id) });
-        if (!booking) return res.status(404).send({ message: 'Appointment not found' });
+
+        const booking = await serviceBookingcollection.findOne({
+            _id: new ObjectId(id),
+        });
+
+        if (!booking)
+            return res.status(404).send({
+                message: 'Appointment not found',
+            });
         if (action === 'confirm' && booking.status !== 'pending')
-            return res.status(409).send({ message: 'Only pending appointments can be confirmed' });
+            return res.status(409).send({
+                message: 'Only pending appointments can be confirmed',
+            });
         if (booking.status === 'cancelled')
-            return res.status(409).send({ message: 'Appointment is already cancelled' });
+            return res.status(409).send({
+                message: 'Appointment is already cancelled',
+            });
+
         // Expire an open checkout before cancelling, so it cannot be paid later.
         if (action === 'cancel' && booking.checkoutSessionId && booking.paymentStatus !== 'paid') {
             const { stripe } = await import('../../config/stripe.js');

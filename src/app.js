@@ -26,16 +26,24 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
 
     if (
         event.type === 'checkout.session.completed' ||
-        event.type === 'checkout.session.async_payment_succeeded'
+        event.type === 'checkout.session.async_payment_succeeded' ||
+        event.type === 'checkout.session.async_payment_failed'
     ) {
         const session = event.data.object;
 
-        if (!['paid', 'no_payment_required'].includes(session.payment_status)) {
+        if (
+            event.type !== 'checkout.session.async_payment_failed' &&
+            !['paid', 'no_payment_required'].includes(session.payment_status)
+        ) {
             return res.json({ received: true });
         }
 
         try {
-            await saveCheckoutPayment(session, new Date(event.created * 1000));
+            await saveCheckoutPayment(
+                session,
+                new Date(event.created * 1000),
+                event.type === 'checkout.session.async_payment_failed',
+            );
         } catch (error) {
             console.error('Stripe payment update failed:', error.message);
             return res.sendStatus(500);
@@ -44,7 +52,7 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
     res.json({ received: true });
 });
 
-app.use(cors());
+app.use(cors({ origin: (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '') }));
 app.use(express.json());
 app.use('/', routes);
 

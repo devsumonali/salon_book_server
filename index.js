@@ -1,7 +1,7 @@
 import app from './src/app.js';
 import { connectToMongoDB } from './src/config/database.js';
 
-const port = 8000;
+const port = process.env.PORT || 8000;
 
 export { connectToMongoDB };
 

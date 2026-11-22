@@ -3,139 +3,14 @@ import { ObjectId } from 'mongodb';
 import {
     serviceBookingcollection,
     serviceCollection,
-    userCollection,
+    transactionCollection,
 } from '../../config/database.js';
-import { requireSession } from '../../middleware/session.js';
+import { verifyToken, requireCustomer } from '../../middleware/verifyToken.js';
+import { appointmentTimestamp, getDetails } from '../../lib/appointments.js';
 import { stripe } from '../../config/stripe.js';
-import { saveCheckoutPayment } from '../../lib/checkout-payment.js';
 
 const router = Router();
-const appointmentTimestamp = (booking) => {
-    const date = booking.date;
-    const time = booking.time;
-
-    if (typeof date !== 'string' || typeof time !== 'string') return NaN;
-
-    // Example: 10:30 AM or 14:30
-    const match = time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
-
-    if (!match) return NaN;
-
-    let hour = Number(match[1]);
-    const minute = Number(match[2]);
-    const period = match[3]?.toUpperCase();
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return NaN;
-    const calendarDate = new Date(date + 'T00:00:00Z');
-    if (Number.isNaN(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== date)
-        return NaN;
-    if (minute > 59) return NaN;
-    if (period && (hour < 1 || hour > 12)) return NaN;
-    if (!period && hour > 23) return NaN;
-
-    if (period) {
-        hour = (hour % 12) + (period === 'PM' ? 12 : 0);
-    }
-
-    return new Date(`${date}T${String(hour).padStart(2, '0')}:${match[2]}:00+06:00`).getTime();
-};
-
-const getDetails = async (booking) => {
-    const service =
-        booking.service ||
-        (ObjectId.isValid(booking.serviceId || '')
-            ? await serviceCollection.findOne({ _id: new ObjectId(booking.serviceId) })
-            : null);
-    return {
-        ...booking,
-        _id: booking._id.toString(),
-        service: {
-            name: service?.name || 'Service unavailable',
-            image: service?.image || '',
-            category: service?.category || '',
-            price: service?.price ?? null,
-            duration: service?.duration ?? null,
-        },
-        isPast: appointmentTimestamp(booking) < Date.now(),
-    };
-};
-
-router.use('/api/customer', requireSession);
-
-const profileDetails = (user) => ({
-    id: user._id.toString(),
-    name: user.name,
-    email: user.email,
-    image: user.image || '',
-    phone: user.phone || '',
-    createdAt: user.createdAt || null,
-    emailVerified: user.emailVerified === true,
-});
-const profileFields = { name: 1, email: 1, image: 1, phone: 1, createdAt: 1, emailVerified: 1 };
-
-// View the logged-in customer's personal information.
-router.get('/api/customer/profile', async (req, res) => {
-    try {
-        const user = await userCollection.findOne(
-            { _id: new ObjectId(req.user.id) },
-            { projection: profileFields },
-        );
-        if (!user) return res.status(404).send({ message: 'Profile not found' });
-        res.send(profileDetails(user));
-    } catch (error) {
-        res.status(500).send({ message: 'Failed to load profile' });
-    }
-});
-
-// Update only name, profile image, and phone; the session selects the user.
-router.patch('/api/customer/profile', async (req, res) => {
-    try {
-        const { name, image, phone } = req.body || {};
-        const update = {};
-        if (name !== undefined) {
-            if (typeof name !== 'string' || !name.trim() || name.trim().length > 100)
-                return res
-                    .status(400)
-                    .send({ message: 'Name must be between 1 and 100 characters' });
-            update.name = name.trim();
-        }
-        if (phone !== undefined) {
-            if (typeof phone !== 'string')
-                return res.status(400).send({ message: 'Please enter a valid phone number' });
-            const digits = phone.replace(/\D/g, '');
-            if (
-                phone.trim() &&
-                (!/^[+()\d\s.-]+$/.test(phone) || digits.length < 7 || digits.length > 15)
-            )
-                return res.status(400).send({ message: 'Please enter a valid phone number' });
-            update.phone = phone.trim();
-        }
-        if (image !== undefined) {
-            if (typeof image !== 'string')
-                return res.status(400).send({ message: 'Invalid profile image' });
-            if (image) {
-                try {
-                    if (new URL(image).protocol !== 'https:')
-                        return res.status(400).send({ message: 'Profile image must use HTTPS' });
-                } catch {
-                    return res.status(400).send({ message: 'Invalid profile image URL' });
-                }
-            }
-            update.image = image;
-        }
-        if (!Object.keys(update).length)
-            return res.status(400).send({ message: 'No profile fields to update' });
-        const user = await userCollection.findOneAndUpdate(
-            { _id: new ObjectId(req.user.id) },
-            { $set: { ...update, updatedAt: new Date() } },
-            { returnDocument: 'after', includeResultMetadata: false, projection: profileFields },
-        );
-        if (!user) return res.status(404).send({ message: 'Profile not found' });
-        res.send({ message: 'Profile updated successfully', profile: profileDetails(user) });
-    } catch (error) {
-        res.status(500).send({ message: 'Failed to update profile' });
-    }
-});
+router.use('/api/customer', verifyToken, requireCustomer);
 
 // Customer overview
 router.get('/api/customer/overview', async (req, res) => {
@@ -210,6 +85,19 @@ router.post('/api/customer/appointments', async (req, res) => {
             status: 'active',
         });
         if (!service) return res.status(404).send({ message: 'Service is unavailable' });
+        // Only a predefined salon time slot can be booked.
+        if (!['09:30 AM', '11:00 AM', '01:30 PM', '03:00 PM', '05:00 PM'].includes(time))
+            return res.status(400).send({ message: 'Choose an available time slot' });
+        const existing = await serviceBookingcollection.findOne({
+            serviceId,
+            date,
+            time,
+            status: { $in: ['pending', 'confirmed'] },
+        });
+        if (existing)
+            return res
+                .status(409)
+                .send({ message: 'This time slot is already booked. Choose another time.' });
         const query = {
             userId: req.user.id,
             serviceId,
@@ -220,6 +108,7 @@ router.post('/api/customer/appointments', async (req, res) => {
         };
         const booking = {
             ...query,
+            slotProtected: true,
             name: req.user.name,
             userEmail: req.user.email,
             notes,
@@ -233,13 +122,21 @@ router.post('/api/customer/appointments', async (req, res) => {
             },
         };
         try {
-            await serviceBookingcollection.updateOne(
+            const result = await serviceBookingcollection.updateOne(
                 query,
                 { $setOnInsert: booking },
                 { upsert: true },
             );
+            if (!result.upsertedCount)
+                return res
+                    .status(409)
+                    .send({ message: 'This time slot is already booked. Choose another time.' });
         } catch (error) {
-            if (error.code !== 11000) throw error;
+            if (error.code === 11000)
+                return res
+                    .status(409)
+                    .send({ message: 'This time slot was just booked. Choose another time.' });
+            throw error;
         }
         res.status(201).send({ message: 'Appointment requested. Please wait for confirmation.' });
     } catch (error) {
@@ -290,8 +187,12 @@ router.post('/api/customer/appointments/:id/checkout', async (req, res) => {
         if (booking.checkoutSessionId) {
             const previous = await stripe.checkout.sessions.retrieve(booking.checkoutSessionId);
             if (previous.status === 'open') return res.send({ url: previous.url });
-            if (previous.status === 'complete') {
-                await saveCheckoutPayment(previous);
+            // A verified failed asynchronous payment may be retried with a new checkout.
+            const failed = await transactionCollection.findOne({
+                stripeSessionId: previous.id,
+                status: 'failed',
+            });
+            if (previous.status === 'complete' && !failed) {
                 return res.status(409).send({
                     message:
                         'Payment is already completed or processing. Refresh your appointments.',
@@ -299,13 +200,12 @@ router.post('/api/customer/appointments/:id/checkout', async (req, res) => {
             }
         }
         const details = await getDetails(booking);
-        if (!Number.isFinite(details.service.price) || details.service.price < 0)
+        if (!Number.isFinite(details.service.price) || details.service.price <= 0)
             return res.status(400).send({ message: 'Service price is unavailable' });
         const clientUrl = process.env.CLIENT_URL.replace(/\/$/, '');
         const session = await stripe.checkout.sessions.create(
             {
                 mode: 'payment',
-                payment_method_types: ['card'],
                 customer_email: booking.userEmail,
                 line_items: [
                     {
@@ -318,7 +218,7 @@ router.post('/api/customer/appointments/:id/checkout', async (req, res) => {
                     },
                 ],
                 success_url: clientUrl + '/service/success?session_id={CHECKOUT_SESSION_ID}',
-                cancel_url: clientUrl + '/dashboard/customer/my-appointments?payment=cancelled',
+                cancel_url: clientUrl + '/service/cancel',
                 metadata: { bookingId: req.params.id, userId: req.user.id },
             },
             {
@@ -326,31 +226,17 @@ router.post('/api/customer/appointments/:id/checkout', async (req, res) => {
                     'appointment-' + req.params.id + '-' + (booking.checkoutSessionId || 'first'),
             },
         );
-        await serviceBookingcollection.updateOne(query, {
+        const result = await serviceBookingcollection.updateOne(query, {
             $set: { checkoutSessionId: session.id },
         });
+        // An admin may have cancelled the request while Stripe was creating checkout.
+        if (!result.matchedCount) {
+            await stripe.checkout.sessions.expire(session.id);
+            return res.status(409).send({ message: 'Appointment changed. Please refresh.' });
+        }
         res.send({ url: session.url });
     } catch (error) {
         res.status(500).send({ message: 'Unable to start Stripe checkout' });
-    }
-});
-
-// Salon administrators can confirm pending requests.
-router.patch('/api/admin/appointments/:id/confirm', requireSession, async (req, res) => {
-    try {
-        if (req.user.role !== 'admin')
-            return res.status(403).send({ message: 'Admin access required' });
-        if (!ObjectId.isValid(req.params.id))
-            return res.status(400).send({ message: 'Invalid appointment' });
-        const result = await serviceBookingcollection.updateOne(
-            { _id: new ObjectId(req.params.id), status: 'pending' },
-            { $set: { status: 'confirmed', confirmedAt: new Date() } },
-        );
-        if (!result.matchedCount)
-            return res.status(409).send({ message: 'Appointment is no longer pending' });
-        res.send({ message: 'Appointment confirmed' });
-    } catch (error) {
-        res.status(500).send({ message: 'Failed to confirm appointment' });
     }
 });
 

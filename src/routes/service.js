@@ -25,9 +25,18 @@ router.post('/api/services', async (req, res) => {
 
 //service get api create
 router.get('/api/services', async (req, res) => {
-    const cursor = serviceCollection.find();
-    const result = await cursor.toArray();
-    res.send(result);
+    try {
+        const query = {};
+        const categories = [req.query.category].flat().filter(value => typeof value === 'string' && value);
+        if (categories.length) query.category = { $in: categories };
+        if (['active', 'inactive'].includes(req.query.status)) query.status = req.query.status;
+        if (typeof req.query.search === 'string' && req.query.search.trim()) {
+            const search = req.query.search.trim().replace(/[.*+?^{}$()|[\]\\]/g, '\\$&');
+            query.$or = ['name', 'description', 'category'].map(field => ({ [field]: { $regex: search, $options: 'i' } }));
+        }
+        const result = await serviceCollection.find(query).toArray();
+        res.send(result);
+    } catch (error) { res.status(500).send({ message: 'Failed to fetch services' }); }
 });
 
 //single service api

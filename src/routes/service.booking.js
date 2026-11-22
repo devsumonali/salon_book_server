@@ -2,108 +2,13 @@ import { Router } from 'express';
 import { ObjectId } from 'mongodb';
 import { db, serviceBookingcollection, serviceCollection } from '../config/database.js';
 import { stripe } from '../config/stripe.js';
+import { saveCheckoutPayment } from '../lib/checkout-payment.js';
 
 const router = Router();
 
-router.post('/api/create-checkout-session', async (req, res) => {
-    try {
-        const payload = req.body;
-        if (
-            typeof payload?.serviceId !== 'string' ||
-            !ObjectId.isValid(payload.serviceId) ||
-            ['userId', 'email', 'name', 'date', 'time'].some(
-                (field) => typeof payload[field] !== 'string' || !payload[field].trim(),
-            )
-        ) {
-            return res.status(400).json({ error: 'Invalid booking details' });
-        }
-
-        const service = await serviceCollection.findOne({ _id: new ObjectId(payload.serviceId) });
-
-        if (!service) {
-            return res.status(404).json({ error: 'service not found' });
-        }
-
-        if (service.status === 'inactive') {
-            return res.status(400).json({ error: 'Service currently unavailable' });
-        }
-
-        const booking = {
-            serviceId: payload.serviceId,
-            userId: payload.userId,
-            userEmail: payload.email,
-            name: payload.name,
-            date: payload.date,
-            time: payload.time,
-            notes: payload.notes,
-            status: 'pending',
-            paymentStatus: 'unpaid',
-            createdAt: new Date(),
-        };
-
-        const filter = {
-            userId: booking.userId,
-            serviceId: booking.serviceId,
-            date: booking.date,
-            time: booking.time,
-            status: 'pending',
-            paymentStatus: 'unpaid',
-        };
-
-        let savedBooking;
-
-        try {
-            savedBooking = await serviceBookingcollection.findOneAndUpdate(
-                filter,
-                { $setOnInsert: booking },
-                {
-                    upsert: true,
-                    returnDocument: 'after',
-                    includeResultMetadata: false,
-                },
-            );
-        } catch (error) {
-            // Reuse a booking inserted by another request at the same time.
-            if (error.code !== 11000) throw error;
-
-            savedBooking = await serviceBookingcollection.findOne(filter);
-
-            if (!savedBooking) throw error;
-        }
-
-        const clientUrl = process.env.CLIENT_URL.replace(/\/$/, '');
-
-        const session = await stripe.checkout.sessions.create({
-            line_items: [
-                {
-                    price_data: {
-                        currency: 'usd',
-                        product_data: {
-                            name: service.name,
-                            description: service.description,
-                        },
-
-                        unit_amount: Math.round(service.price * 100),
-                    },
-                    quantity: 1,
-                },
-            ],
-            customer_email: payload.email,
-            success_url: `${clientUrl}/service/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${clientUrl}/service/cancel`,
-            mode: 'payment',
-            metadata: {
-                bookingId: savedBooking._id.toString(),
-                userId: savedBooking.userId,
-            },
-        });
-
-        res.send({ success: true, url: session.url });
-    } catch (error) {
-        res.status(500).send({
-            message: 'Booking creation failed',
-        });
-    }
+// Payments now start from a confirmed appointment.
+router.post('/api/create-checkout-session', (req, res) => {
+    res.status(410).send({ message: 'Request an appointment first, then pay after confirmation.' });
 });
 
 router.get('/api/checkout-session/:sessionId', async (req, res) => {
@@ -149,6 +54,8 @@ router.get('/api/checkout-session/:sessionId', async (req, res) => {
         if (!booking) {
             return res.status(404).json({ error: 'Booking not found' });
         }
+
+        await saveCheckoutPayment(session);
 
         res.json({
             id: session.id,

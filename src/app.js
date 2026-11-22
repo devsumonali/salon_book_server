@@ -2,8 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { stripe } from './config/stripe.js';
 import routes from './routes/index.js';
-import { ObjectId } from 'mongodb';
-import { serviceBookingcollection } from './config/database.js';
+import { saveCheckoutPayment } from './lib/checkout-payment.js';
 
 const app = express();
 
@@ -31,29 +30,14 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
     ) {
         const session = event.data.object;
 
-        if (session.payment_status !== 'paid') {
+        if (!['paid', 'no_payment_required'].includes(session.payment_status)) {
             return res.json({ received: true });
         }
 
-        const bookingId = session.metadata?.bookingId;
-        if (typeof bookingId !== 'string' || !ObjectId.isValid(bookingId)) {
-            return res.sendStatus(400);
-        }
-
         try {
-            const result = await serviceBookingcollection.updateOne(
-                {
-                    _id: new ObjectId(bookingId),
-                },
-                { $set: { status: 'confirmed', paymentStatus: 'paid' } },
-            );
-
-            if (result.matchedCount === 0) {
-                console.error('Stripe webhook booking not found:', bookingId);
-                return res.sendStatus(500);
-            }
+            await saveCheckoutPayment(session, new Date(event.created * 1000));
         } catch (error) {
-            console.error('Stripe webhook booking update failed:', error.message);
+            console.error('Stripe payment update failed:', error.message);
             return res.sendStatus(500);
         }
     }

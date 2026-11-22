@@ -6,10 +6,11 @@ import { serviceData } from '../../lib/service-data.js';
 
 const router = Router();
 
-// Public service menu: only active services, optional search/category/price sorting.
+// Public service menu: all services by default; home requests status=active.
 router.get('/api/services', async (req, res) => {
     try {
-        const query = { status: 'active' };
+        const query = {};
+        if (['active', 'inactive'].includes(req.query.status)) query.status = req.query.status;
         const categories = [req.query.category]
             .flat()
             .filter((value) => typeof value === 'string' && value);
@@ -32,7 +33,7 @@ router.get('/api/services', async (req, res) => {
     }
 });
 
-// Protected service details. Inactive services are visible only to an admin.
+// Signed-in users can view all service details. Booking still requires an active service.
 router.get('/api/services/:id', verifyToken, async (req, res) => {
     try {
         if (!ObjectId.isValid(req.params.id))
@@ -42,7 +43,6 @@ router.get('/api/services/:id', verifyToken, async (req, res) => {
         const query = {
             _id: new ObjectId(req.params.id),
         };
-        if (req.user.role !== 'admin') query.status = 'active';
 
         const service = await serviceCollection.findOne(query);
 

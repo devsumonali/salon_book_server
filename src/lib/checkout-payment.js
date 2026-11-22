@@ -1,7 +1,7 @@
 import { ObjectId } from 'mongodb';
 import { serviceBookingcollection, transactionCollection } from '../config/database.js';
 
-// Only the verified webhook calls this function. A success-page GET never changes payment state.
+// Called after a signed webhook or server-side Stripe verification. GET stays read-only.
 export const saveCheckoutPayment = async (session, paidAt = new Date(), failed = false) => {
     const { bookingId, userId } = session.metadata || {};
     if (
@@ -9,13 +9,13 @@ export const saveCheckoutPayment = async (session, paidAt = new Date(), failed =
         !userId ||
         (!failed && !['paid', 'no_payment_required'].includes(session.payment_status))
     )
-        return;
+        return false;
     const booking = await serviceBookingcollection.findOne({
         _id: new ObjectId(bookingId),
         userId,
     });
-    if (!booking || !Number.isInteger(session.amount_total) || session.amount_total < 0) return;
-    // A unique Stripe Session ID makes webhook retries safe.
+    if (!booking || !Number.isInteger(session.amount_total) || session.amount_total < 0) return false;
+    // A unique Stripe Session ID makes webhook and success-page retries safe.
     try {
         await transactionCollection.updateOne(
             { stripeSessionId: session.id, ...(failed ? { status: { $ne: 'paid' } } : {}) },
@@ -63,4 +63,5 @@ export const saveCheckoutPayment = async (session, paidAt = new Date(), failed =
                 },
             },
         );
+    return !failed;
 };

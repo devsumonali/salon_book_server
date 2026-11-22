@@ -8,7 +8,6 @@ import {
 import { verifyToken, requireCustomer } from '../../middleware/verifyToken.js';
 import { appointmentTimestamp, getDetails } from '../../lib/appointments.js';
 import { stripe } from '../../config/stripe.js';
-import { saveCheckoutPayment } from '../../lib/checkout-payment.js';
 
 const router = Router();
 router.use('/api/customer', verifyToken, requireCustomer);
@@ -188,20 +187,6 @@ router.post('/api/customer/appointments/:id/checkout', async (req, res) => {
         if (booking.checkoutSessionId) {
             const previous = await stripe.checkout.sessions.retrieve(booking.checkoutSessionId);
             if (previous.status === 'open') return res.send({ url: previous.url });
-
-            // Recover an already-paid checkout before offering another payment.
-            if (
-                previous.status === 'complete' &&
-                ['paid', 'no_payment_required'].includes(previous.payment_status)
-            ) {
-                if (previous.metadata?.bookingId !== req.params.id || previous.metadata?.userId !== req.user.id)
-                    return res.status(409).send({ message: 'Checkout does not match this appointment' });
-                if (!(await saveCheckoutPayment(previous)))
-                    return res.status(409).send({ message: 'Unable to save this payment' });
-                return res.send({
-                    message: 'Payment already completed. Your appointment is marked as paid.',
-                });
-            }
 
             // A verified failed asynchronous payment may be retried with a new checkout.
             const failed = await transactionCollection.findOne({

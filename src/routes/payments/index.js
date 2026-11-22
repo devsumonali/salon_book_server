@@ -3,12 +3,11 @@ import { ObjectId } from 'mongodb';
 import { serviceBookingcollection } from '../../config/database.js';
 import { verifyToken, requireCustomer } from '../../middleware/verifyToken.js';
 import { stripe } from '../../config/stripe.js';
-import { saveCheckoutPayment } from '../../lib/checkout-payment.js';
 
 const router = Router();
 
-// GET reads checkout details. POST verifies Stripe payment and saves it for the owner.
-const checkoutSession = async (req, res) => {
+// Checkout details are read-only. Paid state comes exclusively from Stripe webhooks.
+router.get('/api/checkout-session/:sessionId', verifyToken, requireCustomer, async (req, res) => {
     try {
         if (!/^cs_[a-zA-Z0-9_]+$/.test(req.params.sessionId))
             return res.status(400).send({ message: 'Invalid checkout session' });
@@ -29,17 +28,6 @@ const checkoutSession = async (req, res) => {
             return res.status(404).send({
                 message: 'Appointment not found',
             });
-        let appointmentPaymentStatus = booking.paymentStatus;
-        // Verify with Stripe, never trust payment status sent by the browser.
-        if (
-            req.method === 'POST' &&
-            session.status === 'complete' &&
-            ['paid', 'no_payment_required'].includes(session.payment_status)
-        ) {
-            if (!(await saveCheckoutPayment(session)))
-                return res.status(409).send({ message: 'Unable to save this payment' });
-            appointmentPaymentStatus = 'paid';
-        }
         res.send({
             id: session.id,
             bookingId,
@@ -55,7 +43,7 @@ const checkoutSession = async (req, res) => {
             amountTotal: session.amount_total,
             currency: session.currency,
             paymentStatus: session.payment_status,
-            appointmentPaymentStatus,
+            appointmentPaymentStatus: booking.paymentStatus,
             status: session.status,
         });
     } catch (error) {
@@ -63,9 +51,6 @@ const checkoutSession = async (req, res) => {
             message: 'Unable to load checkout',
         });
     }
-};
-
-router.get('/api/checkout-session/:sessionId', verifyToken, requireCustomer, checkoutSession);
-router.post('/api/checkout-session/:sessionId/verify', verifyToken, requireCustomer, checkoutSession);
+});
 
 export default router;

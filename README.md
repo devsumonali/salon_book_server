@@ -14,7 +14,7 @@ Node.js, Express 5, MongoDB native driver, jose JWT verification, and Stripe. Pu
 
 JWT verification checks signature, expiry, issuer, audience, the active Better Auth session, and the current database user. Blocking a customer revokes their sessions. Public signup cannot assign admin access.
 
-A signed Stripe webhook records successful payments. The success page also calls an owner-protected POST API that verifies the Checkout Session directly with Stripe and saves the same payment safely. GET requests stay read-only.
+Only a verified Stripe webhook updates payment status and saves a transaction. The success page reads the saved appointment status; it never marks a payment as paid.
 
 ## Run locally
 
@@ -48,7 +48,7 @@ Start the client as described in its README. Authentication and JWT signing are 
     src/routes/customer/         Overview, own appointments, cancellation, checkout
     src/routes/profile/          Own profile GET/PATCH for either role
     src/routes/admin/            Overview, all appointments, users, transactions
-    src/routes/payments/         Checkout details and verified payment sync for the owner
+    src/routes/payments/         Read-only checkout details for the owner
     src/lib/                     Validation, appointment details and webhook persistence
     scripts/                     Explicit admin setup, sample services and checks
     tests/                       Unit and temporary-fixture integration tests
@@ -78,7 +78,6 @@ Each route has a comment describing its purpose. APIs use ordinary async functio
 | PATCH | /api/admin/users/:id | Admin sets a customer's isBlocked boolean |
 | GET | /api/admin/transactions | Admin reads verified paid/failed records |
 | GET | /api/checkout-session/:sessionId | Owner reads Stripe checkout details |
-| POST | /api/checkout-session/:sessionId/verify | Owner verifies Stripe payment and syncs appointment/transaction |
 | POST | /api/webhooks/stripe | Signed Stripe events only |
 
 Protected calls require an Authorization: Bearer JWT header. The client obtains this JWT server-side from Better Auth; an opaque browser session token is not an API JWT.
@@ -91,7 +90,7 @@ Main collections are user (managed by Better Auth), services, appointments, and 
 
 Startup renames the old service-booking collection to appointments when appointments does not exist. It preserves existing documents and IDs. A unique partial index blocks new active bookings for the same service/date/time. Old conflicting active bookings are retained with slotProtected=false; route validation still checks those bookings before accepting a new request. Cancelling an appointment releases its slot without deleting history.
 
-Service details and prices are snapshotted when booking, so later service edits/deletion do not erase appointment history. Appointment times use Asia/Dhaka. Transactions have a unique stripeSessionId to make webhook retries safe. Legacy paid bookings are preserved but are not automatically converted into verified transactions; a matching signed Stripe event or verified checkout sync can populate their transaction history.
+Service details and prices are snapshotted when booking, so later service edits/deletion do not erase appointment history. Appointment times use Asia/Dhaka. Transactions have a unique stripeSessionId to make webhook retries safe. Legacy paid bookings are preserved but are not automatically converted into verified transactions; a matching signed Stripe event can populate their transaction history.
 
 ## Admin access and sample services
 

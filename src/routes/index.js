@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import serviceRoutes from './service.js';
 import serviceBookingRoutes from './service.booking.js';
-import paymentRoutes from './payment.js';
+import customerRoutes from './customer/index.js';
 
 const router = Router();
 
 router.use(serviceRoutes);
 router.use(serviceBookingRoutes);
-router.use('/api/payment', paymentRoutes);
+router.use(customerRoutes);
 
 router.get('/', (req, res) => {
     res.send('salon server is on!');

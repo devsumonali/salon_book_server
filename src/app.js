@@ -8,22 +8,27 @@ import { serviceBookingcollection } from './config/database.js';
 const app = express();
 
 app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
-    const stripeEvent = req.body;
-    // console.log(event, 'event');
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+        console.error('STRIPE_WEBHOOK_SECRET is not configured');
+        return res.sendStatus(500);
+    }
 
     const signature = req.headers['stripe-signature'];
     let event;
     try {
         event = stripe.webhooks.constructEvent(
             req.body,
-            req.headers['stripe-signature'],
+            signature,
             process.env.STRIPE_WEBHOOK_SECRET,
         );
     } catch (error) {
         return res.sendStatus(400);
     }
 
-    if (event.type === 'checkout.session.completed') {
+    if (
+        event.type === 'checkout.session.completed' ||
+        event.type === 'checkout.session.async_payment_succeeded'
+    ) {
         const session = event.data.object;
 
         if (session.payment_status !== 'paid') {
@@ -35,12 +40,22 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
             return res.sendStatus(400);
         }
 
-        await serviceBookingcollection.updateOne(
-            {
-                _id: new ObjectId(bookingId),
-            },
-            { $set: { status: 'confirmed', paymentStatus: 'paid' } },
-        );
+        try {
+            const result = await serviceBookingcollection.updateOne(
+                {
+                    _id: new ObjectId(bookingId),
+                },
+                { $set: { status: 'confirmed', paymentStatus: 'paid' } },
+            );
+
+            if (result.matchedCount === 0) {
+                console.error('Stripe webhook booking not found:', bookingId);
+                return res.sendStatus(500);
+            }
+        } catch (error) {
+            console.error('Stripe webhook booking update failed:', error.message);
+            return res.sendStatus(500);
+        }
     }
     res.json({ received: true });
 });

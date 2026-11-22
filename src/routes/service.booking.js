@@ -41,7 +41,36 @@ router.post('/api/create-checkout-session', async (req, res) => {
             createdAt: new Date(),
         };
 
-        const result = await serviceBookingcollection.insertOne(booking);
+        const filter = {
+            userId: booking.userId,
+            serviceId: booking.serviceId,
+            date: booking.date,
+            time: booking.time,
+            status: 'pending',
+            paymentStatus: 'unpaid',
+        };
+
+        let savedBooking;
+
+        try {
+            savedBooking = await serviceBookingcollection.findOneAndUpdate(
+                filter,
+                { $setOnInsert: booking },
+                {
+                    upsert: true,
+                    returnDocument: 'after',
+                    includeResultMetadata: false,
+                },
+            );
+        } catch (error) {
+            // Reuse a booking inserted by another request at the same time.
+            if (error.code !== 11000) throw error;
+
+            savedBooking = await serviceBookingcollection.findOne(filter);
+
+            if (!savedBooking) throw error;
+        }
+
         const clientUrl = process.env.CLIENT_URL.replace(/\/$/, '');
 
         const session = await stripe.checkout.sessions.create({
@@ -64,8 +93,8 @@ router.post('/api/create-checkout-session', async (req, res) => {
             cancel_url: `${clientUrl}/service/cancel`,
             mode: 'payment',
             metadata: {
-                bookingId: result.insertedId.toString(),
-                userId: payload.userId,
+                bookingId: savedBooking._id.toString(),
+                userId: savedBooking.userId,
             },
         });
 

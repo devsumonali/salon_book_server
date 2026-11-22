@@ -7,10 +7,22 @@ const client = new MongoClient(process.env.MONGODB_URI);
 export async function connectToMongoDB() {
     try {
         await client.connect();
+        await serviceBookingcollection.createIndex(
+            { userId: 1, serviceId: 1, date: 1, time: 1 },
+            {
+                name: 'unique_pending_booking',
+                unique: true,
+                partialFilterExpression: {
+                    status: 'pending',
+                    paymentStatus: 'unpaid',
+                },
+            },
+        );
         console.log('You successfully connected to MongoDB!');
         return client;
     } catch (err) {
         console.dir(err);
+        throw err;
     }
 }
 

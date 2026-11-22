@@ -42,7 +42,6 @@ router.get('/api/customer/overview', async (req, res) => {
         if (!token) {
             return res.status(401).send({ message: 'Unauthorized' });
         }
-
         // 2. Check session
         const session = await db.collection('session').findOne({
             token,
@@ -52,7 +51,6 @@ router.get('/api/customer/overview', async (req, res) => {
         if (!session?.userId) {
             return res.status(401).send({ message: 'Unauthorized' });
         }
-
         // 3. Get customer bookings
         const userId = session.userId.toString();
         const bookings = await serviceBookingcollection.find({ userId }).toArray();
@@ -110,27 +108,28 @@ router.get('/api/customer/overview', async (req, res) => {
 //
 router.get('/api/customer/appointments', async (req, res) => {
     try {
-        const customerId = req.user.id;
+        const userId = req.user.id;
+        const { status, search, page = 1, limit = 10 } = req.query;
+        const query = { userId };
 
-        const { status, page = 1, limit = 10 } = req.query;
-
-        const filter = { customerId };
-
-        if (status) {
-            filter.status = status;
+        // Status Filter
+        if (status && status !== 'all') {
+            query.status = status;
         }
-
+        // Search Filter
+        if (search) {
+            query.serviceName = { $regex: search, $options: 'i' };
+        }
+        // Pagination
         const skip = (Number(page) - 1) * Number(limit);
-
         const bookings = await serviceBookingcollection
-            .find(filter)
+            .find(query)
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(Number(limit))
             .toArray();
 
-        const total = await serviceBookingcollection.countDocuments(filter);
-
+        const total = await serviceBookingcollection.countDocuments(query);
         res.send({
             bookings,
             total,
@@ -144,5 +143,7 @@ router.get('/api/customer/appointments', async (req, res) => {
         });
     }
 });
+
+//user update api create
 
 export default router;

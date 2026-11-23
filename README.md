@@ -6,7 +6,7 @@ Express REST API for salon services, customer appointments, admin management, an
 
 - Client repository: https://github.com/devsumonali/salon_book_client
 - Server repository: https://github.com/devsumonali/salon_book_server
-- Live website / API: deployed URLs have not been added yet.
+- Live website / API: https://salon-book-client-alpha.vercel.app/
 
 ## Features and technology
 
@@ -57,28 +57,28 @@ Each route has a comment describing its purpose. APIs use ordinary async functio
 
 ## API map
 
-| Method | URL | Purpose / access |
-| --- | --- | --- |
-| GET | /api/services | Public active services; search, category, sort query parameters |
-| GET | /api/services/:id | Authenticated service details; customers see active only |
-| POST | /api/services | Admin create service |
-| PATCH | /api/services/:id | Admin update service or active status |
-| DELETE | /api/services/:id | Admin delete service |
-| GET | /api/customer/overview | Customer appointment counts and recent bookings |
-| GET, POST | /api/customer/appointments | Customer's own list / request a slot |
-| PATCH | /api/customer/appointments/:id/cancel | Owner cancels an unpaid pending request |
-| POST | /api/customer/appointments/:id/checkout | Owner pays a confirmed unpaid request |
-| GET, PATCH | /api/customer/profile | Either role reads/updates their own name, image, phone |
-| GET | /api/admin/overview | Admin counts and successful payment totals |
-| GET | /api/admin/services | Admin sees active and inactive services |
-| GET | /api/admin/appointments | Admin sees all requests and details |
-| PATCH | /api/admin/appointments/:id/confirm | Admin confirms a pending request |
-| PATCH | /api/admin/appointments/:id/cancel | Admin cancels pending/confirmed requests |
-| GET | /api/admin/users | Admin lists customer details |
-| PATCH | /api/admin/users/:id | Admin sets a customer's isBlocked boolean |
-| GET | /api/admin/transactions | Admin reads verified paid/failed records |
-| GET | /api/checkout-session/:sessionId | Owner reads Stripe checkout details |
-| POST | /api/webhooks/stripe | Signed Stripe events only |
+| Method     | URL                                     | Purpose / access                                                |
+| ---------- | --------------------------------------- | --------------------------------------------------------------- |
+| GET        | /api/services                           | Public active services; search, category, sort query parameters |
+| GET        | /api/services/:id                       | Authenticated service details; customers see active only        |
+| POST       | /api/services                           | Admin create service                                            |
+| PATCH      | /api/services/:id                       | Admin update service or active status                           |
+| DELETE     | /api/services/:id                       | Admin delete service                                            |
+| GET        | /api/customer/overview                  | Customer appointment counts and recent bookings                 |
+| GET, POST  | /api/customer/appointments              | Customer's own list / request a slot                            |
+| PATCH      | /api/customer/appointments/:id/cancel   | Owner cancels an unpaid pending request                         |
+| POST       | /api/customer/appointments/:id/checkout | Owner pays a confirmed unpaid request                           |
+| GET, PATCH | /api/customer/profile                   | Either role reads/updates their own name, image, phone          |
+| GET        | /api/admin/overview                     | Admin counts and successful payment totals                      |
+| GET        | /api/admin/services                     | Admin sees active and inactive services                         |
+| GET        | /api/admin/appointments                 | Admin sees all requests and details                             |
+| PATCH      | /api/admin/appointments/:id/confirm     | Admin confirms a pending request                                |
+| PATCH      | /api/admin/appointments/:id/cancel      | Admin cancels pending/confirmed requests                        |
+| GET        | /api/admin/users                        | Admin lists customer details                                    |
+| PATCH      | /api/admin/users/:id                    | Admin sets a customer's isBlocked boolean                       |
+| GET        | /api/admin/transactions                 | Admin reads verified paid/failed records                        |
+| GET        | /api/checkout-session/:sessionId        | Owner reads Stripe checkout details                             |
+| POST       | /api/webhooks/stripe                    | Signed Stripe events only                                       |
 
 Protected calls require an Authorization: Bearer JWT header. The client obtains this JWT server-side from Better Auth; an opaque browser session token is not an API JWT.
 
